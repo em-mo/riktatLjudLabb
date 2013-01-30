@@ -164,6 +164,9 @@ namespace Microsoft.Samples.Kinect.AudioBasics
         /// <param name="e">event arguments.</param>
         private void WindowLoaded(object sender, RoutedEventArgs e)
         {
+
+            
+
             // Look through all sensors and start the first connected one.
             // This requires that a Kinect is connected at the time of app startup.
             // To make your app robust against plug/unplug, 
@@ -204,7 +207,7 @@ namespace Microsoft.Samples.Kinect.AudioBasics
                 this.foregroundPixels[i] = 0xff;
             }
 
-            this.waveDisplay.Source = this.energyBitmap;
+            //this.waveDisplay.Source = this.energyBitmap;
 
             //CompositionTarget.Rendering += UpdateEnergy;
 
@@ -260,6 +263,23 @@ namespace Microsoft.Samples.Kinect.AudioBasics
             beamAngleText.Text = string.Format(CultureInfo.CurrentCulture, Properties.Resources.BeamAngle, e.Angle.ToString("0", CultureInfo.CurrentCulture));
         }
 
+
+        private void MoveBox(SoundSourceAngleChangedEventArgs e)
+        {
+            Thickness margin = rectangle1.Margin;
+            if (e.Angle > 0)
+                margin.Left += 10;
+            else
+                margin.Left -=10;
+
+            if (rectangle1.Margin.Left + rectangle1.Width > topPanel.ActualWidth)
+                margin.Left += topPanel.ActualWidth - (rectangle1.Margin.Left + rectangle1.Width);
+            else if (rectangle1.Margin.Left < -topPanel.ActualWidth)
+                margin.Left = -topPanel.ActualWidth;
+
+            rectangle1.Margin = margin;
+        }
+
         /// <summary>
         /// Handles event triggered when sound source angle changes.
         /// </summary>
@@ -269,19 +289,8 @@ namespace Microsoft.Samples.Kinect.AudioBasics
         {
             // Maximum possible confidence corresponds to this gradient width
             const double MinGradientWidth = 0.04;
-          
-            Thickness margin = rectangle1.Margin;
-            if (e.Angle > 0)
-                margin.Left += 5;
-            else
-                margin.Left -= 5;
 
-            if (rectangle1.Margin.Left + rectangle1.Width > topPanel.ActualWidth / 2)
-                margin.Left += topPanel.ActualWidth - (rectangle1.Margin.Left + rectangle1.Width);
-            else if (rectangle1.Margin.Left < 0)
-                margin.Left = 0;
-
-            rectangle1.Margin = margin;
+            MoveBox(e);  
 
             // Set width of mark based on confidence.
             // A confidence of 0 would give us a gradient that fills whole area diffusely.
