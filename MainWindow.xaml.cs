@@ -263,6 +263,9 @@ namespace Microsoft.Samples.Kinect.AudioBasics
             beamAngleText.Text = string.Format(CultureInfo.CurrentCulture, Properties.Resources.BeamAngle, e.Angle.ToString("0", CultureInfo.CurrentCulture));
         }
 
+        private void MoveBoxToPosition()
+        {
+        }
 
         private void MoveBox(SoundSourceAngleChangedEventArgs e)
         {
