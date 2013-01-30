@@ -4,64 +4,85 @@
 // </copyright>
 //------------------------------------------------------------------------------
 
-namespace Microsoft.Samples.Kinect.SpeechBasics
+namespace Microsoft.Samples.Kinect.AudioBasics
 {
     using System;
     using System.Collections.Generic;
     using System.ComponentModel;
+    using System.Globalization;
     using System.IO;
-    using System.Text;
+    using System.Threading;
     using System.Windows;
-    using System.Windows.Documents;
     using System.Windows.Media;
+    using System.Windows.Media.Imaging;
     using Microsoft.Kinect;
-    using Microsoft.Speech.AudioFormat;
-    using Microsoft.Speech.Recognition;
 
     /// <summary>
-    /// Interaction logic for MainWindow.xaml
+    /// Interaction logic for MainWindow.xaml.
     /// </summary>
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Design", "CA1001:TypesThatOwnDisposableFieldsShouldBeDisposable",
-        Justification = "In a full-fledged application, the SpeechRecognitionEngine object should be properly disposed. For the sake of simplicity, we're omitting that code in this sample.")]
     public partial class MainWindow : Window
     {
         /// <summary>
-        /// Resource key for medium-gray-colored brush.
+        /// Number of milliseconds between each read of audio data from the stream.
         /// </summary>
-        private const string MediumGreyBrushKey = "MediumGreyBrush";
+        private const int AudioPollingInterval = 50;
 
         /// <summary>
-        /// Map between each direction and the direction immediately to its right.
+        /// Number of samples captured from Kinect audio stream each millisecond.
         /// </summary>
-        private static readonly Dictionary<Direction, Direction> TurnRight = new Dictionary<Direction, Direction>
-            {
-                { Direction.Up, Direction.Right },
-                { Direction.Right, Direction.Down },
-                { Direction.Down, Direction.Left },
-                { Direction.Left, Direction.Up }
-            };
+        private const int SamplesPerMillisecond = 16;
 
         /// <summary>
-        /// Map between each direction and the direction immediately to its left.
+        /// Number of bytes in each Kinect audio stream sample.
         /// </summary>
-        private static readonly Dictionary<Direction, Direction> TurnLeft = new Dictionary<Direction, Direction>
-            {
-                { Direction.Up, Direction.Left },
-                { Direction.Right, Direction.Up },
-                { Direction.Down, Direction.Right },
-                { Direction.Left, Direction.Down }
-            };
+        private const int BytesPerSample = 2;
 
         /// <summary>
-        /// Map between each direction and the displacement unit it represents.
+        /// Number of audio samples represented by each column of pixels in wave bitmap.
         /// </summary>
-        private static readonly Dictionary<Direction, Point> Displacements = new Dictionary<Direction, Point>
-            {
-                { Direction.Up, new Point { X = 0, Y = -1 } },
-                { Direction.Right, new Point { X = 1, Y = 0 } },
-                { Direction.Down, new Point { X = 0, Y = 1 } },
-                { Direction.Left, new Point { X = -1, Y = 0 } }
-            };
+        private const int SamplesPerColumn = 40;
+
+        /// <summary>
+        /// Width of bitmap that stores audio stream energy data ready for visualization.
+        /// </summary>
+        private const int EnergyBitmapWidth = 780;
+
+        /// <summary>
+        /// Height of bitmap that stores audio stream energy data ready for visualization.
+        /// </summary>
+        private const int EnergyBitmapHeight = 195;
+
+        /// <summary>
+        /// Bitmap that contains constructed visualization for audio stream energy, ready to
+        /// be displayed. It is a 2-color bitmap with white as background color and blue as
+        /// foreground color.
+        /// </summary>
+        private readonly WriteableBitmap energyBitmap;
+
+        /// <summary>
+        /// Rectangle representing the entire energy bitmap area. Used when drawing background
+        /// for energy visualization.
+        /// </summary>
+        private readonly Int32Rect fullEnergyRect = new Int32Rect(0, 0, EnergyBitmapWidth, EnergyBitmapHeight);
+
+        /// <summary>
+        /// Array of background-color pixels corresponding to an area equal to the size of whole energy bitmap.
+        /// </summary>
+        private readonly byte[] backgroundPixels = new byte[EnergyBitmapWidth * EnergyBitmapHeight];
+
+        /// <summary>
+        /// Buffer used to hold audio data read from audio stream.
+        /// </summary>
+        private readonly byte[] audioBuffer = new byte[AudioPollingInterval * SamplesPerMillisecond * BytesPerSample];
+
+        /// <summary>
+        /// Buffer used to store audio stream energy data as we read audio.
+        /// 
+        /// We store 25% more energy values than we strictly need for visualization to allow for a smoother
+        /// stream animation effect, since rendering happens on a different schedule with respect to audio
+        /// capture.
+        /// </summary>
+        private readonly double[] energy = new double[(uint)(EnergyBitmapWidth * 1.25)];
 
         /// <summary>
         /// Active Kinect sensor.
@@ -69,19 +90,62 @@ namespace Microsoft.Samples.Kinect.SpeechBasics
         private KinectSensor sensor;
 
         /// <summary>
-        /// Speech recognition engine using audio data from Kinect.
+        /// Stream of audio being captured by Kinect sensor.
         /// </summary>
-        private SpeechRecognitionEngine speechEngine;
+        private Stream audioStream;
 
         /// <summary>
-        /// Current direction where turtle is facing.
+        /// <code>true</code> if audio is currently being read from Kinect stream, <code>false</code> otherwise.
         /// </summary>
-        private Direction curDirection = Direction.Up;
+        private bool reading;
 
         /// <summary>
-        /// List of all UI span elements used to select recognized text.
+        /// Thread that is reading audio from Kinect stream.
         /// </summary>
-        private List<Span> recognitionSpans;
+        private Thread readingThread;
+
+        /// <summary>
+        /// Array of foreground-color pixels corresponding to a line as long as the energy bitmap is tall.
+        /// This gets re-used while constructing the energy visualization.
+        /// </summary>
+        private byte[] foregroundPixels;
+
+        /// <summary>
+        /// Sum of squares of audio samples being accumulated to compute the next energy value.
+        /// </summary>
+        private double accumulatedSquareSum;
+
+        /// <summary>
+        /// Number of audio samples accumulated so far to compute the next energy value.
+        /// </summary>
+        private int accumulatedSampleCount;
+
+        /// <summary>
+        /// Index of next element available in audio energy buffer.
+        /// </summary>
+        private int energyIndex;
+
+        /// <summary>
+        /// Number of newly calculated audio stream energy values that have not yet been
+        /// displayed.
+        /// </summary>
+        private int newEnergyAvailable;
+
+        /// <summary>
+        /// Error between time slice we wanted to display and time slice that we ended up
+        /// displaying, given that we have to display in integer pixels.
+        /// </summary>
+        private double energyError;
+        
+        /// <summary>
+        /// Last time energy visualization was rendered to screen.
+        /// </summary>
+        private DateTime? lastEnergyRefreshTime;
+
+        /// <summary>
+        /// Index of first energy element that has never (yet) been displayed to screen.
+        /// </summary>
+        private int energyRefreshIndex;
 
         /// <summary>
         /// Initializes a new instance of the MainWindow class.
@@ -89,46 +153,15 @@ namespace Microsoft.Samples.Kinect.SpeechBasics
         public MainWindow()
         {
             InitializeComponent();
-        }
 
-        /// <summary>
-        /// Enumeration of directions in which turtle may be facing.
-        /// </summary>
-        private enum Direction
-        {
-            Up,
-            Down,
-            Left,
-            Right
-        }
-        
-        /// <summary>
-        /// Gets the metadata for the speech recognizer (acoustic model) most suitable to
-        /// process audio from Kinect device.
-        /// </summary>
-        /// <returns>
-        /// RecognizerInfo if found, <code>null</code> otherwise.
-        /// </returns>
-        private static RecognizerInfo GetKinectRecognizer()
-        {
-            foreach (RecognizerInfo recognizer in SpeechRecognitionEngine.InstalledRecognizers())
-            {
-                string value;
-                recognizer.AdditionalInfo.TryGetValue("Kinect", out value);
-                if ("True".Equals(value, StringComparison.OrdinalIgnoreCase) && "en-US".Equals(recognizer.Culture.Name, StringComparison.OrdinalIgnoreCase))
-                {
-                    return recognizer;
-                }
-            }
-            
-            return null;
+            this.energyBitmap = new WriteableBitmap(EnergyBitmapWidth, EnergyBitmapHeight, 96, 96, PixelFormats.Indexed1, new BitmapPalette(new List<Color> { Colors.White, (Color)this.Resources["KinectPurpleColor"] }));
         }
 
         /// <summary>
         /// Execute initialization tasks.
         /// </summary>
-        /// <param name="sender">object sending the event</param>
-        /// <param name="e">event arguments</param>
+        /// <param name="sender">object sending the event.</param>
+        /// <param name="e">event arguments.</param>
         private void WindowLoaded(object sender, RoutedEventArgs e)
         {
             // Look through all sensors and start the first connected one.
@@ -164,54 +197,28 @@ namespace Microsoft.Samples.Kinect.SpeechBasics
                 return;
             }
 
-            RecognizerInfo ri = GetKinectRecognizer();
-
-            if (null != ri)
+            // Initialize foreground pixels
+            this.foregroundPixels = new byte[EnergyBitmapHeight];
+            for (int i = 0; i < this.foregroundPixels.Length; ++i)
             {
-                recognitionSpans = new List<Span> { forwardSpan, backSpan, rightSpan, leftSpan };
-
-                this.speechEngine = new SpeechRecognitionEngine(ri.Id);
-
-                /****************************************************************
-                * 
-                * Use this code to create grammar programmatically rather than from
-                * a grammar file.
-                * 
-                * var directions = new Choices();
-                * directions.Add(new SemanticResultValue("forward", "FORWARD"));
-                * directions.Add(new SemanticResultValue("forwards", "FORWARD"));
-                * directions.Add(new SemanticResultValue("straight", "FORWARD"));
-                * directions.Add(new SemanticResultValue("backward", "BACKWARD"));
-                * directions.Add(new SemanticResultValue("backwards", "BACKWARD"));
-                * directions.Add(new SemanticResultValue("back", "BACKWARD"));
-                * directions.Add(new SemanticResultValue("turn left", "LEFT"));
-                * directions.Add(new SemanticResultValue("turn right", "RIGHT"));
-                *
-                * var gb = new GrammarBuilder { Culture = ri.Culture };
-                * gb.Append(directions);
-                *
-                * var g = new Grammar(gb);
-                * 
-                ****************************************************************/
-
-                // Create a grammar from grammar definition XML file.
-                using (var memoryStream = new MemoryStream(Encoding.ASCII.GetBytes(Properties.Resources.SpeechGrammar)))
-                {
-                    var g = new Grammar(memoryStream);
-                    speechEngine.LoadGrammar(g);
-                }
-
-                speechEngine.SpeechRecognized += SpeechRecognized;
-                speechEngine.SpeechRecognitionRejected += SpeechRejected;
-
-                speechEngine.SetInputToAudioStream(
-                    sensor.AudioSource.Start(), new SpeechAudioFormatInfo(EncodingFormat.Pcm, 16000, 16, 1, 32000, 2, null));
-                speechEngine.RecognizeAsync(RecognizeMode.Multiple);
+                this.foregroundPixels[i] = 0xff;
             }
-            else
-            {
-                this.statusBarText.Text = Properties.Resources.NoSpeechRecognizer;
-            }
+
+            this.waveDisplay.Source = this.energyBitmap;
+
+            //CompositionTarget.Rendering += UpdateEnergy;
+
+            this.sensor.AudioSource.BeamAngleChanged += this.AudioSourceBeamChanged;
+            this.sensor.AudioSource.SoundSourceAngleChanged += this.AudioSourceSoundSourceAngleChanged;
+
+            // Start streaming audio!
+            this.audioStream = this.sensor.AudioSource.Start();
+
+            // Use a separate thread for capturing audio because audio stream read operations
+            // will block, and we don't want to block main UI thread.
+            this.reading = true;
+            this.readingThread = new Thread(AudioReadingThread);
+            this.readingThread.Start();
         }
 
         /// <summary>
@@ -221,107 +228,178 @@ namespace Microsoft.Samples.Kinect.SpeechBasics
         /// <param name="e">event arguments.</param>
         private void WindowClosing(object sender, CancelEventArgs e)
         {
+            // Tell audio reading thread to stop and wait for it to finish.
+            this.reading = false;
+            if (null != readingThread)
+            {
+                readingThread.Join();
+            }
+
             if (null != this.sensor)
             {
+                //CompositionTarget.Rendering -= UpdateEnergy;
+
+                this.sensor.AudioSource.BeamAngleChanged -= this.AudioSourceBeamChanged;
+                this.sensor.AudioSource.SoundSourceAngleChanged -= this.AudioSourceSoundSourceAngleChanged;
                 this.sensor.AudioSource.Stop();
 
                 this.sensor.Stop();
                 this.sensor = null;
             }
-
-            if (null != this.speechEngine)
-            {
-                this.speechEngine.SpeechRecognized -= SpeechRecognized;
-                this.speechEngine.SpeechRecognitionRejected -= SpeechRejected;
-                this.speechEngine.RecognizeAsyncStop();
-            }
         }
 
         /// <summary>
-        /// Remove any highlighting from recognition instructions.
-        /// </summary>
-        private void ClearRecognitionHighlights()
-        {
-            foreach (Span span in recognitionSpans)
-            {
-                span.Foreground = (Brush)this.Resources[MediumGreyBrushKey];
-                span.FontWeight = FontWeights.Normal;
-            }
-        }
-
-        /// <summary>
-        /// Handler for recognized speech events.
+        /// Handles event triggered when audio beam angle changes.
         /// </summary>
         /// <param name="sender">object sending the event.</param>
         /// <param name="e">event arguments.</param>
-        private void SpeechRecognized(object sender, SpeechRecognizedEventArgs e)
+        private void AudioSourceBeamChanged(object sender, BeamAngleChangedEventArgs e)
         {
-            // Speech utterance confidence below which we treat speech as if it hadn't been heard
-            const double ConfidenceThreshold = 0.3;
+            beamRotation.Angle = -e.Angle;
 
-            // Number of degrees in a right angle.
-            const int DegreesInRightAngle = 90;
+            beamAngleText.Text = string.Format(CultureInfo.CurrentCulture, Properties.Resources.BeamAngle, e.Angle.ToString("0", CultureInfo.CurrentCulture));
+        }
 
-            // Number of pixels turtle should move forwards or backwards each time.
-            const int DisplacementAmount = 60;
+        /// <summary>
+        /// Handles event triggered when sound source angle changes.
+        /// </summary>
+        /// <param name="sender">object sending the event.</param>
+        /// <param name="e">event arguments.</param>
+        private void AudioSourceSoundSourceAngleChanged(object sender, SoundSourceAngleChangedEventArgs e)
+        {
+            // Maximum possible confidence corresponds to this gradient width
+            const double MinGradientWidth = 0.04;
+          
+            Thickness margin = rectangle1.Margin;
+            if (e.Angle > 0)
+                margin.Left += 5;
+            else
+                margin.Left -= 5;
 
-            ClearRecognitionHighlights();
+            if (rectangle1.Margin.Left + rectangle1.Width > topPanel.ActualWidth / 2)
+                margin.Left += topPanel.ActualWidth - (rectangle1.Margin.Left + rectangle1.Width);
+            else if (rectangle1.Margin.Left < 0)
+                margin.Left = 0;
 
-            if (e.Result.Confidence >= ConfidenceThreshold)
+            rectangle1.Margin = margin;
+
+            // Set width of mark based on confidence.
+            // A confidence of 0 would give us a gradient that fills whole area diffusely.
+            // A confidence of 1 would give us the narrowest allowed gradient width.
+            double halfWidth = Math.Max((1 - e.ConfidenceLevel), MinGradientWidth) / 2;
+
+            // Update the gradient representing sound source position to reflect confidence
+            this.sourceGsPre.Offset = Math.Max(this.sourceGsMain.Offset - halfWidth, 0);
+            this.sourceGsPost.Offset = Math.Min(this.sourceGsMain.Offset + halfWidth, 1);
+
+            // Rotate gradient to match angle
+            sourceRotation.Angle = -e.Angle;
+
+            sourceAngleText.Text = string.Format(CultureInfo.CurrentCulture, Properties.Resources.SourceAngle, e.Angle.ToString("0", CultureInfo.CurrentCulture));
+            sourceConfidenceText.Text = string.Format(CultureInfo.CurrentCulture, Properties.Resources.SourceConfidence, e.ConfidenceLevel.ToString("0.00", CultureInfo.CurrentCulture));
+        }
+
+        /// <summary>
+        /// Handles polling audio stream and updating visualization every tick.
+        /// </summary>
+        private void AudioReadingThread()
+        {
+            // Bottom portion of computed energy signal that will be discarded as noise.
+            // Only portion of signal above noise floor will be displayed.
+            const double EnergyNoiseFloor = 0.2;
+
+            while (this.reading)
             {
-                switch (e.Result.Semantics.Value.ToString())
-                {
-                    case "FORWARD":
-                        forwardSpan.Foreground = Brushes.DeepSkyBlue;
-                        forwardSpan.FontWeight = FontWeights.Bold;
-                        turtleTranslation.X = (playArea.Width + turtleTranslation.X + (DisplacementAmount * Displacements[curDirection].X)) % playArea.Width;
-                        turtleTranslation.Y = (playArea.Height + turtleTranslation.Y + (DisplacementAmount * Displacements[curDirection].Y)) % playArea.Height;
-                        break;
+                int readCount = audioStream.Read(audioBuffer, 0, audioBuffer.Length);
 
-                    case "BACKWARD":
-                        backSpan.Foreground = Brushes.DeepSkyBlue;
-                        backSpan.FontWeight = FontWeights.Bold;
-                        turtleTranslation.X = (playArea.Width + turtleTranslation.X - (DisplacementAmount * Displacements[curDirection].X)) % playArea.Width;
-                        turtleTranslation.Y = (playArea.Height + turtleTranslation.Y - (DisplacementAmount * Displacements[curDirection].Y)) % playArea.Height;
-                        break;
+                // Calculate energy corresponding to captured audio in the dispatcher
+                // (UI Thread) context, so that rendering code doesn't need to
+                // perform additional synchronization.
+                Dispatcher.BeginInvoke(
+                new Action(
+                    () =>
+                    {
+                        for (int i = 0; i < readCount; i += 2)
+                        {
+                            // compute the sum of squares of audio samples that will get accumulated
+                            // into a single energy value.
+                            short audioSample = BitConverter.ToInt16(audioBuffer, i);
+                            this.accumulatedSquareSum += audioSample * audioSample;
+                            ++this.accumulatedSampleCount;
 
-                    case "LEFT":
-                        leftSpan.Foreground = Brushes.DeepSkyBlue;
-                        leftSpan.FontWeight = FontWeights.Bold;
-                        curDirection = TurnLeft[curDirection];
+                            if (this.accumulatedSampleCount < SamplesPerColumn)
+                            {
+                                continue;
+                            }
 
-                        // We take a left turn to mean a counter-clockwise right angle rotation for the displayed turtle.
-                        turtleRotation.Angle -= DegreesInRightAngle;
-                        break;
+                            // Each energy value will represent the logarithm of the mean of the
+                            // sum of squares of a group of audio samples.
+                            double meanSquare = this.accumulatedSquareSum / SamplesPerColumn;
+                            double amplitude = Math.Log(meanSquare) / Math.Log(int.MaxValue);
 
-                    case "RIGHT":
-                        rightSpan.Foreground = Brushes.DeepSkyBlue;
-                        rightSpan.FontWeight = FontWeights.Bold;
-                        curDirection = TurnRight[curDirection];
+                            // Renormalize signal above noise floor to [0,1] range.
+                            this.energy[this.energyIndex] = Math.Max(0, amplitude - EnergyNoiseFloor) / (1 - EnergyNoiseFloor);
+                            this.energyIndex = (this.energyIndex + 1) % this.energy.Length;
 
-                        // We take a right turn to mean a clockwise right angle rotation for the displayed turtle.
-                        turtleRotation.Angle += DegreesInRightAngle;
-                        break;
-
-                    case "BLUE":
-                        turtleTranslation.X = (playArea.Width + turtleTranslation.X + (DisplacementAmount * Displacements[curDirection].X)) % playArea.Width;
-                        turtleTranslation.Y = (playArea.Height + turtleTranslation.Y + (DisplacementAmount * Displacements[curDirection].Y)) % playArea.Height;
-                        curDirection = TurnRight[curDirection];
-                        // We take a right turn to mean a clockwise right angle rotation for the displayed turtle.
-                        turtleRotation.Angle += DegreesInRightAngle;
-                        break;
-                }
+                            this.accumulatedSquareSum = 0;
+                            this.accumulatedSampleCount = 0;
+                            ++this.newEnergyAvailable;
+                        }
+                    }));
             }
         }
 
         /// <summary>
-        /// Handler for rejected speech events.
+        /// Handles rendering energy visualization into a bitmap.
         /// </summary>
         /// <param name="sender">object sending the event.</param>
         /// <param name="e">event arguments.</param>
-        private void SpeechRejected(object sender, SpeechRecognitionRejectedEventArgs e)
+        private void UpdateEnergy(object sender, EventArgs e)
         {
-            ClearRecognitionHighlights();
+            
+            // Calculate how many energy samples we need to advance since the last update in order to
+            // have a smooth animation effect
+            DateTime now = DateTime.UtcNow;
+            DateTime? previousRefreshTime = this.lastEnergyRefreshTime;
+            this.lastEnergyRefreshTime = now;
+
+            // No need to refresh if there is no new energy available to render
+            if (this.newEnergyAvailable <= 0)
+            {
+                return;
+            }
+
+            if (previousRefreshTime != null)
+            {
+                double energyToAdvance = this.energyError + (((now - previousRefreshTime.Value).TotalMilliseconds * SamplesPerMillisecond) / SamplesPerColumn);
+                int energySamplesToAdvance = Math.Min(this.newEnergyAvailable, (int)Math.Round(energyToAdvance));
+                this.energyError = energyToAdvance - energySamplesToAdvance;
+                this.energyRefreshIndex = (this.energyRefreshIndex + energySamplesToAdvance) % this.energy.Length;
+                this.newEnergyAvailable -= energySamplesToAdvance;
+            }
+
+            // clear background of energy visualization area
+            this.energyBitmap.WritePixels(fullEnergyRect, this.backgroundPixels, EnergyBitmapWidth, 0);
+
+            // Draw each energy sample as a centered vertical bar, where the length of each bar is
+            // proportional to the amount of energy it represents.
+            // Time advances from left to right, with current time represented by the rightmost bar.
+            int baseIndex = (this.energyRefreshIndex + this.energy.Length - EnergyBitmapWidth) % this.energy.Length;
+            for (int i = 0; i < EnergyBitmapWidth; ++i)
+            {
+                const int HalfImageHeight = EnergyBitmapHeight / 2;
+
+                // Each bar has a minimum height of 1 (to get a steady signal down the middle) and a maximum height
+                // equal to the bitmap height.
+                int barHeight = (int)Math.Max(1.0, (this.energy[(baseIndex + i) % this.energy.Length] * EnergyBitmapHeight));
+
+                // Center bar vertically on image
+                var barRect = new Int32Rect(i, HalfImageHeight - (barHeight / 2), 1, barHeight);
+
+                // Draw bar in foreground color
+                this.energyBitmap.WritePixels(barRect, foregroundPixels, 1, 0);
+            }
+             
         }
     }
 }
