@@ -421,7 +421,7 @@ namespace Microsoft.Samples.Kinect.AudioBasics
         {
             if (changeColorCooldownTimer.AddSeconds(ChangeColorCooldown) < DateTime.Now)
             {
-                if (Math.Abs(ChangeColorTargetAngle - angle) < ChangeColorAngleDelta)
+                if (Math.Abs(ChangeColorTargetAngle - angle) < ChangeColorAngleDelta && confidence > ChangeColorMinimumConfidence)
                 {
 
                     changeColorCooldownTimer = DateTime.Now;
