@@ -413,5 +413,23 @@ namespace Microsoft.Samples.Kinect.AudioBasics
             }
              
         }
+
+        private const double ChangeColorTargetAngle = 20;
+        private const double ChangeColorAngleDelta = 5;
+        private const double ChangeColorMinimumConfidence = 0.3;
+        private const double ChangeColorCooldown = 1;
+        private DateTime changeColorCooldownTimer = DateTime.Now;
+
+        private void CheckChangeColor(double angle, double confidence)
+        {
+            if (changeColorCooldownTimer.AddSeconds(ChangeColorCooldown) < DateTime.Now)
+            {
+                if (Math.Abs(ChangeColorTargetAngle - angle) < ChangeColorAngleDelta)
+                {
+
+                    changeColorCooldownTimer = DateTime.Now;
+                }
+            }
+        }
     }
 }
