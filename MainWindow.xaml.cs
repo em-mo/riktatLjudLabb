@@ -422,8 +422,8 @@ namespace Microsoft.Samples.Kinect.AudioBasics
         }
 
         private double ChangeColorTargetAngle = 20;
-        private const double ChangeColorAngleDelta = 5;
-        private const double ChangeColorMinimumConfidence = 0.3;
+        private double ChangeColorAngleDelta = 5;
+        private double ChangeColorMinimumConfidence = 0.5;
         private const double ChangeColorCooldown = 1;
         private DateTime changeColorCooldownTimer = DateTime.Now;
 
@@ -445,6 +445,16 @@ namespace Microsoft.Samples.Kinect.AudioBasics
         {
             ChangeColorTargetAngle = e.NewValue;
             targetRotation.Angle = e.NewValue;
+        }
+
+        private void confidenceSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            ChangeColorMinimumConfidence = e.NewValue;
+        }
+
+        private void deltaSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            ChangeColorAngleDelta = e.NewValue;
         }
     }
 }

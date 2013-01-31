@@ -93,6 +93,11 @@
                 <TextBlock Name="statusBarText"></TextBlock>
             </StatusBarItem>
         </StatusBar>
-        <Slider Grid.Row="3" Height="23"  HorizontalAlignment="Left" Margin="216,10,0,0" Value="20" Minimum="-50" Maximum="50" Name="angleSlider" ValueChanged="angleSlider_ValueChanged" VerticalAlignment="Top" Width="100" />
+        <Slider Grid.Row="3" Height="23"  HorizontalAlignment="Left" Margin="116,10,0,0" Value="20" Minimum="-50" Maximum="50" Name="angleSlider" ValueChanged="angleSlider_ValueChanged" VerticalAlignment="Top" Width="100" />
+        <Slider Grid.Row="3" Height="23"  HorizontalAlignment="Left" Margin="526,8,0,0" Value="0.5" Minimum="0.0" Maximum="1.0" Name="confidenceSlider" ValueChanged="confidenceSlider_ValueChanged" VerticalAlignment="Top" Width="100" />
+        <Slider Grid.Row="3" Height="23"  HorizontalAlignment="Left" Margin="327,10,0,0" Value="4" Minimum="0.0" Maximum="10" Name="deltaSlider" ValueChanged="deltaSlider_ValueChanged" VerticalAlignment="Top" Width="100" />
+        <Label Content="Target" Grid.Row="3" Height="28" HorizontalAlignment="Left" Margin="69,7,0,0" Name="label1" VerticalAlignment="Top" />
+        <Label Content="Diff" Grid.Row="3" Height="28" HorizontalAlignment="Left" Margin="287,7,0,0" Name="label2" VerticalAlignment="Top" />
+        <Label Content="Confidence" Grid.Row="3" Height="28" HorizontalAlignment="Left" Margin="450,7,0,0" Name="label3" VerticalAlignment="Top" />
     </Grid>
 </Window>
