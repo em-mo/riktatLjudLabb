@@ -22,6 +22,8 @@ namespace Microsoft.Samples.Kinect.AudioBasics
     /// </summary>
     public partial class MainWindow : Window
     {
+
+        System.Collections.Queue colorQue = new System.Collections.Queue();
         /// <summary>
         /// Number of milliseconds between each read of audio data from the stream.
         /// </summary>
@@ -165,7 +167,12 @@ namespace Microsoft.Samples.Kinect.AudioBasics
         private void WindowLoaded(object sender, RoutedEventArgs e)
         {
 
-            
+            colorQue.Enqueue(Colors.AliceBlue);
+            colorQue.Enqueue(Colors.DarkCyan);
+            colorQue.Enqueue(Colors.DarkGoldenrod);
+            colorQue.Enqueue(Colors.DarkMagenta);
+            colorQue.Enqueue(Colors.DarkTurquoise);
+            colorQue.Enqueue(Colors.DodgerBlue);
 
             // Look through all sensors and start the first connected one.
             // This requires that a Kinect is connected at the time of app startup.
@@ -293,7 +300,8 @@ namespace Microsoft.Samples.Kinect.AudioBasics
             // Maximum possible confidence corresponds to this gradient width
             const double MinGradientWidth = 0.04;
 
-            MoveBox(e);  
+            MoveBox(e);
+            CheckChangeColor(e.Angle, e.ConfidenceLevel);
 
             // Set width of mark based on confidence.
             // A confidence of 0 would give us a gradient that fills whole area diffusely.
@@ -426,8 +434,11 @@ namespace Microsoft.Samples.Kinect.AudioBasics
             {
                 if (Math.Abs(ChangeColorTargetAngle - angle) < ChangeColorAngleDelta)
                 {
-
+                    Color deQuedColor = (Color)colorQue.Dequeue();
+                    colorQue.Enqueue(deQuedColor);
+                    rectangle1.Fill = new SolidColorBrush(deQuedColor);
                     changeColorCooldownTimer = DateTime.Now;
+
                 }
             }
         }
