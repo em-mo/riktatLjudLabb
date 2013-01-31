@@ -22,6 +22,8 @@ namespace Microsoft.Samples.Kinect.AudioBasics
     /// </summary>
     public partial class MainWindow : Window
     {
+
+        System.Collections.Queue colorQue = new System.Collections.Queue();
         /// <summary>
         /// Number of milliseconds between each read of audio data from the stream.
         /// </summary>
@@ -165,7 +167,12 @@ namespace Microsoft.Samples.Kinect.AudioBasics
         private void WindowLoaded(object sender, RoutedEventArgs e)
         {
 
-            
+            colorQue.Enqueue(Colors.AliceBlue);
+            colorQue.Enqueue(Colors.DarkCyan);
+            colorQue.Enqueue(Colors.DarkGoldenrod);
+            colorQue.Enqueue(Colors.DarkMagenta);
+            colorQue.Enqueue(Colors.DarkTurquoise);
+            colorQue.Enqueue(Colors.DodgerBlue);
 
             // Look through all sensors and start the first connected one.
             // This requires that a Kinect is connected at the time of app startup.
@@ -260,7 +267,7 @@ namespace Microsoft.Samples.Kinect.AudioBasics
         {
             beamRotation.Angle = -e.Angle;
 
-            beamAngleText.Text = string.Format(CultureInfo.CurrentCulture, Properties.Resources.BeamAngle, e.Angle.ToString("0", CultureInfo.CurrentCulture));
+            beamAngleText.Text = string.Format(CultureInfo.CurrentCulture, Properties.Resources.SourceAngle, e.Angle.ToString("0", CultureInfo.CurrentCulture));
         }
 
         private void MoveBoxToPosition()
@@ -293,7 +300,8 @@ namespace Microsoft.Samples.Kinect.AudioBasics
             // Maximum possible confidence corresponds to this gradient width
             const double MinGradientWidth = 0.04;
 
-            MoveBox(e);  
+            MoveBox(e);
+            CheckChangeColor(e.Angle, e.ConfidenceLevel);
 
             // Set width of mark based on confidence.
             // A confidence of 0 would give us a gradient that fills whole area diffusely.
@@ -410,11 +418,10 @@ namespace Microsoft.Samples.Kinect.AudioBasics
 
                 // Draw bar in foreground color
                 this.energyBitmap.WritePixels(barRect, foregroundPixels, 1, 0);
-            }
-             
+            }    
         }
 
-        private const double ChangeColorTargetAngle = 20;
+        private double ChangeColorTargetAngle = 20;
         private const double ChangeColorAngleDelta = 5;
         private const double ChangeColorMinimumConfidence = 0.3;
         private const double ChangeColorCooldown = 1;
@@ -426,10 +433,18 @@ namespace Microsoft.Samples.Kinect.AudioBasics
             {
                 if (Math.Abs(ChangeColorTargetAngle - angle) < ChangeColorAngleDelta && confidence > ChangeColorMinimumConfidence)
                 {
-
+                    Color deQuedColor = (Color)colorQue.Dequeue();
+                    colorQue.Enqueue(deQuedColor);
+                    rectangle1.Fill = new SolidColorBrush(deQuedColor);
                     changeColorCooldownTimer = DateTime.Now;
                 }
             }
+        }
+
+        private void angleSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            ChangeColorTargetAngle = e.NewValue;
+            targetRotation.Angle = e.NewValue;
         }
     }
 }
