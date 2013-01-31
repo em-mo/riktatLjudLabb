@@ -267,7 +267,7 @@ namespace Microsoft.Samples.Kinect.AudioBasics
         {
             beamRotation.Angle = -e.Angle;
 
-            beamAngleText.Text = string.Format(CultureInfo.CurrentCulture, Properties.Resources.BeamAngle, e.Angle.ToString("0", CultureInfo.CurrentCulture));
+            beamAngleText.Text = string.Format(CultureInfo.CurrentCulture, Properties.Resources.SourceAngle, e.Angle.ToString("0", CultureInfo.CurrentCulture));
         }
 
         private void MoveBoxToPosition()
@@ -418,11 +418,10 @@ namespace Microsoft.Samples.Kinect.AudioBasics
 
                 // Draw bar in foreground color
                 this.energyBitmap.WritePixels(barRect, foregroundPixels, 1, 0);
-            }
-             
+            }    
         }
 
-        private const double ChangeColorTargetAngle = 20;
+        private double ChangeColorTargetAngle = 20;
         private const double ChangeColorAngleDelta = 5;
         private const double ChangeColorMinimumConfidence = 0.3;
         private const double ChangeColorCooldown = 1;
@@ -438,9 +437,14 @@ namespace Microsoft.Samples.Kinect.AudioBasics
                     colorQue.Enqueue(deQuedColor);
                     rectangle1.Fill = new SolidColorBrush(deQuedColor);
                     changeColorCooldownTimer = DateTime.Now;
-
                 }
             }
+        }
+
+        private void angleSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            ChangeColorTargetAngle = e.NewValue;
+            targetRotation.Angle = e.NewValue;
         }
     }
 }
