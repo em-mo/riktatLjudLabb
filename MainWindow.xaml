@@ -43,7 +43,7 @@
                 </Path>
                 <Path Data="M 0.1270,0.3021 L 0.1503,0.2832 A 0.45,0.45 102 0 0 0.8497,0.2832 L 0.8730,0.3021 A 0.48,0.48 102 0 1 0.1270,0.3021 Z">
                     <Path.Fill>
-                        <LinearGradientBrush StartPoint="0,0.5" EndPoint="1,0.5">
+                        <LinearGradientBrush StartPoint="0.0, 0.5" EndPoint="1,0.5">
                             <LinearGradientBrush.GradientStops>
                                 <GradientStop x:Name="sourceGsStart"  Color="White"   Offset="0" />
                                 <GradientStop x:Name="sourceGsPre"    Color="White"   Offset="0.45" />
@@ -69,9 +69,15 @@
                         </LinearGradientBrush>
                     </Path.Fill>
                 </Path>
+                <Path Data="M 0.485,0.42 L 0.515,0.42 L 0.5,0.45 Z" Fill="Red">
+                    <Path.RenderTransform>
+                        <RotateTransform x:Name="targetRotation"  CenterX="0.5" CenterY="0.0" Angle="0"/>
+                    </Path.RenderTransform>
+                </Path>
                 <Path Data="M 0.1270,0.3021 L 0.228,0.2203 A 0.35,0.35 102 0 0 0.772,0.2203 L 0.8730,0.3021 A 0.48,0.48 102 0 1 0.1270,0.3021 Z"  StrokeThickness="0.001" Stroke="LightGray"/>
                 <Path Data="M 0.2280,0.2203 L 0.13,0.2203 L 0.13,0.0353 L 0.15,0.0353" StrokeThickness="0.001" Stroke="LightGray"/>
                 <Path Data="M 0.7720,0.2203 L 0.87,0.2203 L 0.87,0.0353 L 0.85,0.0353" StrokeThickness="0.001" Stroke="LightGray"/>
+
             </Canvas>
         </Viewbox>
         <Grid Grid.Row="2">
