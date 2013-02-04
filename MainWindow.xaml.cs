@@ -444,7 +444,7 @@ namespace Microsoft.Samples.Kinect.AudioBasics
         private void angleSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
             ChangeColorTargetAngle = e.NewValue;
-            targetRotation.Angle = e.NewValue;
+            targetRotation.Angle = -e.NewValue;
         }
 
         private void confidenceSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
